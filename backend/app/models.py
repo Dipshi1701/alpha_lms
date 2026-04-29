@@ -5,6 +5,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
+import json  # noqa: F401  (available for callers that import from models)
 
 # Join table for the many-to-many relationship between users and roles
 user_roles = Table(
@@ -60,6 +61,13 @@ class Course(Base):
     scorm_package_sha256 = Column(String(64))
     scorm_validated_at = Column(DateTime)
 
+    # SCORM runtime metadata extracted from imsmanifest.xml
+    # These are returned to the JS runtime in tl_sco_data
+    scorm_datafromlms     = Column(Text)           # adlcp:datafromlms
+    scorm_masteryscore    = Column(String(16))      # mastery score threshold for pass/fail
+    scorm_maxtimeallowed  = Column(String(32))      # maximum time allowed (HH:MM:SS)
+    scorm_timelimitaction = Column(String(64))      # exit,message / continue,no message / etc.
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -83,27 +91,70 @@ class CourseAssignment(Base):
 
 
 class ScormProgress(Base):
-    """Stores SCORM 1.2 runtime progress per user per course. One row per user+course pair."""
+    """
+    One row per user+course pair.
+    Stores raw SCORM 1.2 runtime fields exactly as received from the JS runtime,
+    plus derived reporting fields for dashboard/LMS use.
+    """
 
     __tablename__ = "scorm_progress"
     __table_args__ = (UniqueConstraint("course_id", "user_id"),)
 
-    id = Column(Integer, primary_key=True)
+    id        = Column(Integer, primary_key=True)
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id   = Column(Integer, ForeignKey("users.id",   ondelete="CASCADE"), nullable=False)
 
-    # Core SCORM 1.2 fields
-    lesson_location = Column(String(1024))       # Where the learner left off
-    suspend_data = Column(Text)                  # Arbitrary SCO-saved state (can be long)
-    lesson_status = Column(String(32), default="not attempted")  # not attempted / incomplete / completed / passed / failed
-    score_raw = Column(String(16))               # Score as returned by SCO
-    session_time = Column(String(16))            # Time spent in last session
-    total_time = Column(String(16))              # Accumulated total time
+    # ── Raw SCORM 1.2 runtime fields (stored as received from JS commitData) ──
+    lesson_location   = Column(Text)                              # SCO bookmark — stored verbatim
+    suspend_data      = Column(Text)                              # opaque SCO save string — never parsed
+    lesson_status     = Column(String(32),  default="not attempted")
+    score_raw         = Column(String(16))                        # JS field name: score
+    score_min         = Column(String(16))                        # JS field name: minscore
+    score_max         = Column(String(16))                        # JS field name: maxscore
+    total_time        = Column(String(32),  default="0000:00:00.00")
+    session_time      = Column(String(32))                        # last session only
+    entry             = Column(String(16),  default="ab-initio")
+    lesson_mode       = Column(String(16),  default="normal")
+    scorm_exit        = Column(String(16))                        # time-out / suspend / logout / ""
+    credit            = Column(String(16),  default="credit")
+    comments          = Column(Text)                              # learner → LMS comments
+    comments_from_lms = Column(Text)                              # LMS → learner comments
 
-    # Progress summary (0-100) computed from lesson_status
-    progress_percent = Column(Integer, default=0)
+    # ── LMS reporting / business fields ──────────────────────────────────────
+    progress_percent   = Column(Integer,  default=0)              # 0-100 derived from lesson_status
+    first_access_time  = Column(DateTime)                         # first time learner opened the course
+    last_accessed_time = Column(DateTime)                         # last commit or finish time
+    last_commit_at     = Column(DateTime)
+    completed_at       = Column(DateTime)                         # set when status is completed/passed/failed
+
+    # ── Timestamps ────────────────────────────────────────────────────────────
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    interactions = relationship("ScormInteraction", back_populates="progress", cascade="all, delete-orphan")
+
+
+class ScormInteraction(Base):
+    """
+    One row per quiz interaction per progress record.
+    Populated from the interactions[] array sent by JS commitData() on commit/finish.
+    """
+
+    __tablename__ = "scorm_interactions"
+
+    id                     = Column(Integer, primary_key=True)
+    progress_id            = Column(Integer, ForeignKey("scorm_progress.id", ondelete="CASCADE"), nullable=False)
+    interaction_index      = Column(Integer, nullable=False)       # position in array (0-based)
+    interaction_id         = Column(String(255))                   # cmi.interactions.n.id
+    interaction_time       = Column(String(32))                    # HH:MM:SS
+    interaction_type       = Column(String(32))                    # true-false / choice / fill-in / etc.
+    weighting              = Column(String(16))
+    student_response       = Column(Text)
+    result                 = Column(String(32))                    # correct / wrong / neutral / etc.
+    latency                = Column(String(32))
+    correct_responses_json = Column(Text)                          # JSON: [{pattern: "..."}]
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    last_commit_at = Column(DateTime)            # When LMSCommit was last called
-    completed_at = Column(DateTime)              # When status reached completed/passed/failed
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    progress = relationship("ScormProgress", back_populates="interactions")

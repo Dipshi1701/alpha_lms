@@ -255,10 +255,18 @@ async def upload_scorm(
     c.scorm_package_bytes = len(content)
     c.scorm_package_sha256 = hashlib.sha256(content).hexdigest()
     c.scorm_validated_at = datetime.utcnow()
+
+    # Store SCORM runtime metadata extracted from the manifest
+    # These are returned to the JS runtime via GET /api/scorm/{id}/state
+    c.scorm_datafromlms     = parsed.datafromlms     or ""
+    c.scorm_masteryscore    = parsed.masteryscore     or ""
+    c.scorm_maxtimeallowed  = parsed.maxtimeallowed   or ""
+    c.scorm_timelimitaction = parsed.timelimitaction  or ""
+
     db.commit()
     db.refresh(c)
 
-    launch_url = f"/scorm-content/{course_id}/{parsed.launch_relative_stored}"
+    launch_url = f"api/scorm-content/{course_id}/{parsed.launch_relative_stored}"
     payload = ScormUploadResponse(
         message="SCORM package uploaded successfully",
         scorm_zip_name=c.scorm_zip_name,

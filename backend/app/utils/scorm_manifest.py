@@ -182,15 +182,67 @@ def _first_title_under_organizations(root: ET.Element) -> str | None:
     return None
 
 
+def _extract_scorm_runtime_metadata(root: ET.Element) -> dict:
+    """
+    Extracts SCORM 1.2 runtime metadata from imsmanifest.xml.
+
+    Looks for these fields (as child elements OR attributes on <item>):
+      adlcp:datafromlms
+      adlcp:masteryscore
+      adlcp:maxtimeallowed
+      adlcp:timelimitaction
+
+    Returns a dict with those keys (values are strings or None).
+    """
+    result = {
+        "datafromlms":     None,
+        "masteryscore":    None,
+        "maxtimeallowed":  None,
+        "timelimitaction": None,
+    }
+
+    # Map of lowercase local tag/attr names → result key
+    tag_map = {
+        "datafromlms":     "datafromlms",
+        "masteryscore":    "masteryscore",
+        "maxtimeallowed":  "maxtimeallowed",
+        "timelimitaction": "timelimitaction",
+    }
+
+    # Check as XML child elements anywhere in the tree
+    for el in root.iter():
+        local = _local(el.tag).lower()
+        if local in tag_map and el.text and el.text.strip():
+            result[tag_map[local]] = el.text.strip()[:64]
+
+    # Also check as attributes on <item> elements (some packages use this form)
+    for el in root.iter():
+        if _local(el.tag).lower() != "item":
+            continue
+        for attr_key, attr_val in el.attrib.items():
+            local_attr = _local(attr_key).lower()
+            if local_attr in tag_map and attr_val.strip():
+                result[tag_map[local_attr]] = attr_val.strip()[:64]
+
+    return result
+
+
 @dataclass
 class ScormPackageParseResult:
-    """Parsed SCORM package for DB + launch URL."""
+    """Parsed SCORM package metadata for DB persistence and launch URL."""
 
-    imsmanifest_relative: str  # relative to course storage root (e.g. unpacked/imsmanifest.xml)
-    launch_relative_stored: str  # e.g. unpacked/res/index.html (under course root)
-    manifest_title: str | None
-    manifest_identifier: str | None
-    schema_version: str | None
+    imsmanifest_relative:   str         # path relative to course storage root
+    launch_relative_stored: str         # e.g. unpacked/res/index.html
+    manifest_title:         str | None
+    manifest_identifier:    str | None
+    schema_version:         str | None
+
+    # Runtime metadata extracted from imsmanifest.xml
+    # Returned to the JS runtime in tl_sco_data
+    datafromlms:     str | None = None  # adlcp:datafromlms
+    masteryscore:    str | None = None  # pass/fail threshold
+    maxtimeallowed:  str | None = None  # time limit
+    timelimitaction: str | None = None  # what to do when time runs out
 
 
 def parse_scorm_package(
@@ -233,11 +285,17 @@ def parse_scorm_package(
     rel_unpacked = os.path.relpath(launch_abs, unpacked_resolved).replace("\\", "/")
     stored_launch = f"unpacked/{rel_unpacked}"
 
+    meta = _extract_scorm_runtime_metadata(root)
+
     return ScormPackageParseResult(
         imsmanifest_relative=imsmanifest_relative,
         launch_relative_stored=stored_launch,
         manifest_title=title,
         manifest_identifier=mid,
         schema_version=ver,
+        datafromlms=meta["datafromlms"],
+        masteryscore=meta["masteryscore"],
+        maxtimeallowed=meta["maxtimeallowed"],
+        timelimitaction=meta["timelimitaction"],
     )
 

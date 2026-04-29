@@ -21,19 +21,25 @@ function log(msg) {
 
 // ═══════════════════════════════════════════════════════════════
 //  SECTION 1 – LEARNER STATE
-//  This object holds everything we need to track and later save.
-//  It is loaded from the server via the global tl_sco_data.
+//  Starts as null. Filled inside LMSInitialize() by reading
+//  window.tl_sco_data, which CoursePlayer.vue sets before the
+//  SCORM iframe loads.
 // ═══════════════════════════════════════════════════════════════
 
-var SCOState = {
-    suspend_data:    tl_sco_data.suspend_data,     // course's free-form save data
-    lesson_location: tl_sco_data.lesson_location,  // last bookmark
-    total_time:      tl_sco_data.total_time,       // cumulative time across all sessions
-    lesson_status:   tl_sco_data.lesson_status,    // passed / failed / incomplete / etc.
-    datafromlms:     tl_sco_data.datafromlms,      // data from the course manifest
-    score:           tl_sco_data.score_raw,        // last raw score
-    entry:           tl_sco_data.entry             // 'ab-initio' (first time) or 'resume'
-};
+var SCOState = {};  // populated in LMSInitialize() from window.tl_sco_data
+
+function initSCOState() {
+    var d = window.tl_sco_data || {};
+    SCOState = {
+        suspend_data:    d.suspend_data    || '',   // course's free-form save data
+        lesson_location: d.lesson_location || '',   // last bookmark
+        total_time:      d.total_time      || '0000:00:00.00',
+        lesson_status:   d.lesson_status   || 'not attempted',
+        datafromlms:     d.datafromlms     || '',   // data from the course manifest
+        score:           d.score_raw       || '',   // last raw score
+        entry:           d.entry           || 'ab-initio'
+    };
+}
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -157,14 +163,14 @@ function buildCmi() {
 
             // Learner's ID – provided by LMS, courses can only read it
             student_id: {
-                value: tl_sco_data.student_id,
+                value: (window.tl_sco_data || {}).student_id || '',
                 get: function() { return this.value; },
                 set: function() { throwError('403'); }           // read-only
             },
 
             // Learner's display name – provided by LMS, read-only
             student_name: {
-                value: tl_sco_data.student_name,
+                value: (window.tl_sco_data || {}).student_name || '',
                 get: function() { return this.value; },
                 set: function() { throwError('403'); }           // read-only
             },
@@ -719,7 +725,10 @@ function LMSInitialize(param) {
         if (param !== '') throwError('201', 'Parameter must be an empty string');
         if (lmsState !== -1 && lmsState !== 1) throwError('101', 'Already initialized');
 
-        cmi      = buildCmi(); // build a fresh data tree
+        // Read window.tl_sco_data now (set by CoursePlayer.vue before the iframe loaded)
+        initSCOState();
+
+        cmi      = buildCmi(); // build a fresh data tree using the loaded SCOState
         lmsState = 0;          // mark as running
         result   = 'true';
     } catch (err) {
@@ -896,7 +905,11 @@ function commitData(mode) {
     }
 
     // Send the data to the server
-    scormPost(dataToSend);
+    if (typeof window.scormPost === 'function') {
+        window.scormPost(dataToSend);
+    } else {
+        log('[SCORM] scormPost not available, skipping commit');
+    }
 }
 
 
@@ -1018,4 +1031,38 @@ API.LMSGetLastError   = LMSGetLastError;
 API.LMSGetErrorString = LMSGetErrorString;
 API.LMSGetDiagnostic  = LMSGetDiagnostic;
 
-window.API = API;
+/**
+ * Call this BEFORE loading the SCORM iframe.
+ * Sets window.API so the course can find the LMS runtime.
+ * Also sets window.top.API for nested same-origin frames.
+ */
+export function installFullScormApi() {
+  window.API = API;
+  try {
+    if (window.top) window.top.API = API;
+  } catch {
+    // ignore cross-origin top frame
+  }
+}
+
+/**
+ * Call this when the SCORM player component is unmounted.
+ * Cleans up window.API so it doesn't leak between courses.
+ */
+export function removeFullScormApi() {
+  // Reset module-level state so next session starts fresh
+  lmsState = -1;
+  SCOState = {};
+  cmi      = null;
+
+  try {
+    if (window.API === API) delete window.API;
+  } catch {
+    window.API = undefined;
+  }
+  try {
+    if (window.top && window.top.API === API) delete window.top.API;
+  } catch {
+    // ignore cross-origin top frame
+  }
+}

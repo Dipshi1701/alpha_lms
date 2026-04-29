@@ -1,21 +1,36 @@
 import { get, patch, post, postForm, remove } from '../../api/api'
 
-// ── SCORM Progress ──────────────────────────────────────────────────────────
+// ── SCORM — Layer 1: Launch / Resume ────────────────────────────────────────
 
-/** Fetch progress across all of the current user's courses (for the list view). */
-export function fetchMyProgress() {
-  return get('/api/scorm/my-progress')
-}
-
-/** Load saved SCORM state for one course (used to resume a session). */
+/**
+ * Load raw SCORM launch state for one course.
+ * Returns tl_sco_data shape — assign this to window.tl_sco_data before
+ * loading the SCORM runtime JS and the iframe.
+ *
+ * @param {number} courseId
+ * @returns {{ student_id, student_name, lesson_location, suspend_data,
+ *             lesson_status, score_raw, total_time, entry, datafromlms,
+ *             masteryscore, maxtimeallowed, timelimitaction,
+ *             lesson_mode, comments_from_lms }}
+ */
 export function fetchScormState(courseId) {
   return get(`/api/scorm/${courseId}/state`)
 }
 
+// ── SCORM — Layer 2: Save APIs ───────────────────────────────────────────────
+
 /**
- * Save SCORM runtime values (called on every LMSCommit).
+ * Persist mid-session SCORM state (called on every LMSCommit).
+ * Payload uses JS field names — backend maps them to DB columns.
+ *
+ * JS field name  →  DB column
+ *   score        →  score_raw
+ *   minscore     →  score_min
+ *   maxscore     →  score_max
+ *   scorm_exit   →  scorm_exit
+ *
  * @param {number} courseId
- * @param {{ lesson_location, suspend_data, lesson_status, score_raw, session_time, total_time }} payload
+ * @param {object} payload  — raw SCOState object from commitData()
  */
 export function commitScormProgress(courseId, payload) {
   return post(`/api/scorm/${courseId}/commit`, payload)
@@ -23,11 +38,35 @@ export function commitScormProgress(courseId, payload) {
 
 /**
  * Finalize the SCORM session (called on LMSFinish).
+ * total_time is updated on the backend only on finish.
+ *
  * @param {number} courseId
- * @param {{ lesson_location, suspend_data, lesson_status, score_raw, total_time }} payload
+ * @param {object} payload  — raw SCOState object from commitData('finish')
  */
 export function finishScormSession(courseId, payload = {}) {
   return post(`/api/scorm/${courseId}/finish`, payload)
+}
+
+// ── SCORM — Layer 3: LMS Progress / Reporting ────────────────────────────────
+
+/**
+ * Fetch a summary of all SCORM progress for the current user.
+ * Used by the learner's course list / dashboard.
+ * Returns business summary fields — NOT raw SCORM launch state.
+ */
+export function fetchMyProgress() {
+  return get('/api/scorm/my-progress')
+}
+
+/**
+ * Fetch a detailed progress report for one course.
+ * Returns course_progress and unit_progress in a dashboard-friendly shape.
+ * Completely separate from the raw launch state returned by fetchScormState().
+ *
+ * @param {number} courseId
+ */
+export function fetchProgressSummary(courseId) {
+  return get(`/api/scorm/${courseId}/progress-summary`)
 }
 
 // ── Courses ─────────────────────────────────────────────────────────────────

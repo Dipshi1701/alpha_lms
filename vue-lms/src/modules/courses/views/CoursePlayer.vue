@@ -8,34 +8,32 @@ import {
   fetchCourse,
   fetchLaunchUrl,
   fetchScormState,
-  commitScormProgress,
-  finishScormSession,
 } from '../service'
-import { installScorm12Api, removeScorm12Api } from '../scorm/scorm12LmsApi'
+import { installFullScormApi, removeFullScormApi } from '../scorm/scorm12FullApi'
 
 const route = useRoute()
 const router = useRouter()
 
-// ── Route param ─────────────────────────────────────────────────────────────
+// ── Route param ──────────────────────────────────────────────────────────────
 
 const courseId = computed(() => {
   const n = Number(route.params.courseId)
   return Number.isFinite(n) ? n : null
 })
 
-// ── State ────────────────────────────────────────────────────────────────────
+// ── Component state ──────────────────────────────────────────────────────────
 
-const course = ref(null)
-const loading = ref(true)
-const pageError = ref('')
-const launchError = ref('')
-const launchPath = ref('')
+const course         = ref(null)
+const loading        = ref(true)
+const pageError      = ref('')
+const launchError    = ref('')
+const launchPath     = ref('')
 const progressPercent = ref(0)
-const lessonStatus = ref('not attempted')
+const lessonStatus   = ref('not attempted')
 
-// ── Computed ──────────────────────────────────────────────────────────────────
+// ── Computed ─────────────────────────────────────────────────────────────────
 
-const launchSrc = computed(() => (launchPath.value ? apiUrl(launchPath.value) : ''))
+const launchSrc   = computed(() => (launchPath.value ? apiUrl(launchPath.value) : ''))
 const courseTitle = computed(() => course.value?.title || 'Course')
 
 const statusLabel = computed(() => {
@@ -54,121 +52,135 @@ const statusColor = computed(() => {
   return 'bg-gray-100 text-gray-600'
 })
 
-// SVG circle progress values
+// SVG progress ring
 const RADIUS = 20
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 const strokeDashoffset = computed(() => CIRCUMFERENCE * (1 - progressPercent.value / 100))
 
-// ── User data (for SCORM student fields) ─────────────────────────────────────
+// ── scormPost ────────────────────────────────────────────────────────────────
+// window.scormPost is called by scorm12FullApi.js on every LMSCommit / LMSFinish.
+// We install it here so it has access to courseId and the auth token.
+// It decides commit vs finish based on whether session_time is present in the payload
+// (the JS runtime only sends session_time on LMSFinish).
 
-function getStoredUser() {
-  try {
-    const raw = localStorage.getItem('userData')
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
+function installScormPost(id) {
+  window.scormPost = async function scormPost(data) {
+    const isFinish = data.session_time !== undefined && data.session_time !== ''
+    const url = isFinish
+      ? `/api/scorm/${id}/finish`
+      : `/api/scorm/${id}/commit`
 
-// ── SCORM callbacks (called by the SCORM API when the SCO commits/finishes) ──
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(data),
+      })
 
-async function onScormCommit({ cmi }) {
-  const id = courseId.value
-  if (!id) return
-  try {
-    const result = await commitScormProgress(id, {
-      lesson_location: cmi['cmi.core.lesson_location'] || '',
-      suspend_data: cmi['cmi.suspend_data'] || '',
-      lesson_status: cmi['cmi.core.lesson_status'] || '',
-      score_raw: cmi['cmi.core.score.raw'] || '',
-      session_time: cmi['cmi.core.session_time'] || '',
-      total_time: cmi['cmi.core.total_time'] || '',
-    })
-    if (result?.progress_percent !== undefined) {
-      progressPercent.value = result.progress_percent
+      if (!response.ok) {
+        console.warn('[SCORM] scormPost HTTP error:', response.status)
+        return
+      }
+
+      const json = await response.json()
+      const result = json?.data
+
+      // Keep the UI in sync with whatever the backend saved
+      if (result?.lesson_status) {
+        lessonStatus.value = result.lesson_status
+      }
+      if (result?.progress_percent !== undefined) {
+        progressPercent.value = result.progress_percent
+      }
+    } catch (e) {
+      console.warn('[SCORM] scormPost failed:', e?.message)
     }
-    lessonStatus.value = cmi['cmi.core.lesson_status'] || lessonStatus.value
-  } catch (e) {
-    console.warn('[SCORM] commit failed:', e?.message)
   }
 }
 
-async function onScormFinish({ cmi }) {
-  const id = courseId.value
-  if (!id) return
-  try {
-    const result = await finishScormSession(id, {
-      lesson_location: cmi['cmi.core.lesson_location'] || '',
-      suspend_data: cmi['cmi.suspend_data'] || '',
-      lesson_status: cmi['cmi.core.lesson_status'] || '',
-      score_raw: cmi['cmi.core.score.raw'] || '',
-      total_time: cmi['cmi.core.total_time'] || '',
-    })
-    lessonStatus.value = result?.lesson_status || cmi['cmi.core.lesson_status'] || lessonStatus.value
-    if (result?.progress_percent !== undefined) {
-      progressPercent.value = result.progress_percent
-    }
-  } catch (e) {
-    console.warn('[SCORM] finish failed:', e?.message)
-  }
+function removeScormPost() {
+  window.scormPost = undefined
 }
 
-// ── Load player ───────────────────────────────────────────────────────────────
+// ── Load player ──────────────────────────────────────────────────────────────
 
 async function loadPlayer() {
-  removeScorm12Api()
-  loading.value = true
-  pageError.value = ''
-  launchError.value = ''
-  launchPath.value = ''
-  course.value = null
+  // Clean up any previously installed API and globals
+  removeFullScormApi()
+  removeScormPost()
+
+  loading.value         = true
+  pageError.value       = ''
+  launchError.value     = ''
+  launchPath.value      = ''
+  course.value          = null
   progressPercent.value = 0
-  lessonStatus.value = 'not attempted'
+  lessonStatus.value    = 'not attempted'
 
   const id = courseId.value
   if (!id) {
     pageError.value = 'Invalid course link.'
-    loading.value = false
+    loading.value   = false
     return
   }
 
-  // Fetch course details + saved SCORM state at the same time
   try {
-    const [courseData, savedState] = await Promise.all([
+    // Fetch course details and raw SCORM launch state in parallel
+    const [courseData, launchState] = await Promise.all([
       fetchCourse(id),
       fetchScormState(id).catch(() => null),
     ])
 
+    console.log('courseData', launchState)
     course.value = courseData
 
-    if (savedState) {
-      progressPercent.value = savedState.progress_percent || 0
-      lessonStatus.value = savedState.lesson_status || 'not attempted'
+    // Update the UI status badge from saved state
+    if (launchState) {
+      lessonStatus.value = launchState.lesson_status || 'not attempted'
+      if (launchState.lesson_status === 'completed' || launchState.lesson_status === 'passed') {
+        progressPercent.value = 100
+      } else if (launchState.lesson_status === 'incomplete') {
+        progressPercent.value = 50
+      }
     }
 
-    // Get the launch URL and wire up the SCORM API
     try {
       const res = await fetchLaunchUrl(id)
       const url = res?.launch_url || ''
 
       if (url) {
-        const user = getStoredUser()
-        installScorm12Api({
-          // Student identity
-          studentId: user?.id ? String(user.id) : String(id),
-          studentName: user?.full_name || user?.email || 'Learner',
+        // ── Step 1: Set window.tl_sco_data ────────────────────────────────
+        // scorm12FullApi.js reads this at LMSInitialize() time to fill the CMI tree.
+        // Must be set BEFORE the iframe loads.
+        window.tl_sco_data = {
+          student_id:        launchState?.student_id        || String(id),
+          student_name:      launchState?.student_name      || 'Learner',
+          lesson_location:   launchState?.lesson_location   || '',
+          suspend_data:      launchState?.suspend_data      || '',
+          lesson_status:     launchState?.lesson_status     || 'not attempted',
+          score_raw:         launchState?.score_raw         || '',
+          total_time:        launchState?.total_time        || '0000:00:00.00',
+          entry:             launchState?.entry             || 'ab-initio',
+          datafromlms:       launchState?.datafromlms       || '',
+          masteryscore:      launchState?.masteryscore      || '',
+          maxtimeallowed:    launchState?.maxtimeallowed    || '',
+          timelimitaction:   launchState?.timelimitaction   || '',
+          lesson_mode:       launchState?.lesson_mode       || 'normal',
+          comments_from_lms: launchState?.comments_from_lms || '',
+        }
 
-          // Restored state (enables resume)
-          lessonStatus: savedState?.lesson_status || 'not attempted',
-          lessonLocation: savedState?.lesson_location || '',
-          suspendData: savedState?.suspend_data || '',
-          totalTime: savedState?.total_time || '00:00:00',
-          entry: savedState?.entry || 'ab-initio',
+        // ── Step 2: Set window.scormPost ──────────────────────────────────
+        // scorm12FullApi.js calls window.scormPost(data) on every LMSCommit / LMSFinish.
+        installScormPost(id)
 
-          // Callbacks → save to backend
-          onCommit: onScormCommit,
-          onFinish: onScormFinish,
-        })
+        // ── Step 3: Install window.API from scorm12FullApi.js ─────────────
+        // This sets window.API (and window.top.API) so the SCORM course
+        // inside the iframe can find the LMS runtime on the parent frame.
+        installFullScormApi()
       }
 
       launchPath.value = url
@@ -184,7 +196,11 @@ async function loadPlayer() {
 
 onMounted(loadPlayer)
 watch(() => route.params.courseId, loadPlayer)
-onBeforeUnmount(removeScorm12Api)
+onBeforeUnmount(() => {
+  removeFullScormApi()
+  removeScormPost()
+  window.tl_sco_data = undefined
+})
 
 function goBack() {
   router.push('/courses')
