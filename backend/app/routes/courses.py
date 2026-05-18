@@ -235,11 +235,11 @@ async def upload_scorm(
     unpacked = base / "unpacked"
 
     try:
-        safe_extract_zip(zip_path, unpacked)
+        filename_map = safe_extract_zip(zip_path, unpacked)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    parsed = parse_scorm_package(unpacked, base)
+    parsed = parse_scorm_package(unpacked, base, filename_map)
     if not parsed:
         raise HTTPException(
             status_code=400,

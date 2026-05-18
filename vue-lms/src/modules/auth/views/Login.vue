@@ -39,72 +39,74 @@ const handleLogin = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-      <!-- Logo/Header -->
+  <div class="min-h-screen flex items-center justify-center bg-white p-6">
+    <div class="w-full max-w-md">
+
+      <!-- Logo -->
       <div class="text-center mb-8">
-        <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <span class="text-3xl font-black text-white">A</span>
-        </div>
-        <h1 class="text-2xl font-bold text-gray-800">Welcome to Alpha Learn</h1>
-        <p class="text-gray-500 text-sm mt-1">Sign in to continue</p>
+        <img src="../../../assets/alphalogo.png" alt="Alphanumeric" class="h-14 w-auto object-contain mx-auto mb-6" />
+        <h1 class="text-2xl font-bold text-asi-black">Welcome back</h1>
+        <p class="text-asi-gray text-sm mt-1">Sign in to your account to continue</p>
       </div>
-      
+
       <!-- Login Form -->
       <form @submit.prevent="handleLogin" class="space-y-5">
         <!-- Email Field -->
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-2">
+          <label class="block text-sm font-semibold text-asi-black mb-2">
             Email Address
           </label>
           <div class="relative">
-            <Mail :size="18" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input 
-              v-model="form.email" 
-              type="email" 
+            <Mail :size="18" class="absolute left-3 top-1/2 -translate-y-1/2 text-asi-gray" />
+            <input
+              v-model="form.email"
+              type="email"
               required
               placeholder="you@example.com"
-              class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              class="w-full pl-10 pr-4 py-2.5 border border-asi-border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-asi-purple/20 focus:border-asi-lavender transition-all text-sm"
             />
           </div>
         </div>
-        
+
         <!-- Password Field -->
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-2">
+          <label class="block text-sm font-semibold text-asi-black mb-2">
             Password
           </label>
           <div class="relative">
-            <Lock :size="18" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input 
-              v-model="form.password" 
-              type="password" 
+            <Lock :size="18" class="absolute left-3 top-1/2 -translate-y-1/2 text-asi-gray" />
+            <input
+              v-model="form.password"
+              type="password"
               required
               placeholder="Enter your password"
-              class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              class="w-full pl-10 pr-4 py-2.5 border border-asi-border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-asi-purple/20 focus:border-asi-lavender transition-all text-sm"
             />
           </div>
         </div>
-        
+
         <!-- Error Message -->
-        <div 
-          v-if="error" 
-          class="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"
+        <div
+          v-if="error"
+          class="flex items-center gap-2 p-3 bg-asi-red-light border border-asi-red/20 rounded-xl text-asi-red text-sm"
         >
           <AlertCircle :size="16" class="flex-shrink-0" />
           <span>{{ error }}</span>
         </div>
-        
+
         <!-- Submit Button -->
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           :disabled="loading"
-          class="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full py-3 bg-gradient-to-r from-[#462C6B] to-[#CA1F47] text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
-          {{ loading ? 'Signing in...' : 'Sign In' }}
+          {{ loading ? 'Signing in…' : 'Sign In' }}
         </button>
       </form>
-      
+
+      <p class="mt-8 text-center text-xs text-asi-gray">
+        © Alphanumeric Innovation. All rights reserved.
+      </p>
     </div>
   </div>
 </template>

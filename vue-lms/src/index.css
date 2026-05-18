@@ -7,15 +7,19 @@
     box-sizing: border-box;
   }
   body {
-    @apply font-sans text-gray-800 bg-gray-50;
+    @apply font-sans text-asi-black bg-asi-surface;
     margin: 0;
     padding: 0;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-asi-black;
   }
 }
 
 @layer components {
+  /* ── Sidebar nav links ─────────────────────────────────────────────────── */
   .sidebar-link {
-    @apply flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg mx-2 transition-all duration-150 cursor-pointer;
+    @apply flex items-center gap-3 px-3 py-2.5 mx-2 my-0.5 text-sm font-medium rounded-lg transition-all duration-150 cursor-pointer;
   }
   .sidebar-link:hover {
     @apply bg-white/10 text-white;
@@ -24,24 +28,34 @@
     @apply bg-white/20 text-white;
   }
   .sidebar-link.inactive {
-    @apply text-blue-100;
+    @apply text-white/70;
   }
+
+  /* ── Widget / card surface ─────────────────────────────────────────────── */
   .widget-card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-5;
+    @apply bg-white rounded-2xl shadow-sm border border-asi-border p-5;
+  }
+
+  /* ── ASI primary button ────────────────────────────────────────────────── */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-asi-red text-white text-sm font-semibold
+           shadow-sm transition hover:-translate-y-0.5 hover:bg-[#a8183b] active:translate-y-0;
+  }
+
+  /* ── ASI secondary button ──────────────────────────────────────────────── */
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-asi-border bg-white
+           text-asi-black text-sm font-semibold transition hover:bg-asi-surface;
+  }
+
+  /* ── Section heading ───────────────────────────────────────────────────── */
+  .section-label {
+    @apply text-xs font-bold uppercase tracking-widest text-asi-lavender;
   }
 }
 
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full;
-}
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
-}
-
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { @apply bg-asi-border rounded-full; }
+::-webkit-scrollbar-thumb:hover { background: #c5b8d8; }

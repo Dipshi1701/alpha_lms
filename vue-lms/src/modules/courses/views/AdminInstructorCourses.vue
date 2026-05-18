@@ -8,6 +8,7 @@ import {
   Trash2,
   Users as UsersIcon,
   Eye,
+  ChevronDown,
 } from 'lucide-vue-next'
 import clsx from 'clsx'
 import CourseUpsertModal from '../modals/CourseUpsertModal.vue'
@@ -244,8 +245,8 @@ const handleAssignSave = ({ assignedUserIds }) => {
   <div class="p-6 max-w-[1400px] mx-auto">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-xl font-bold text-gray-800">Courses</h1>
-        <p class="text-sm text-gray-500 mt-0.5">
+        <h1 class="text-xl font-bold text-asi-black">Courses</h1>
+        <p class="text-sm text-asi-gray mt-0.5">
           {{ loading ? 'Loading…' : `${courses.length} total courses` }}
         </p>
       </div>
@@ -254,7 +255,7 @@ const handleAssignSave = ({ assignedUserIds }) => {
           type="button"
           :disabled="loading"
           @click="openAddCourseModal"
-          class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#1a3a5c] rounded-lg hover:bg-[#162f4a] transition-all shadow-sm disabled:opacity-50"
+          class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-asi-purple rounded-lg hover:bg-[#5a3a8a] transition-all shadow-sm disabled:opacity-50"
         >
           <BookPlus :size="15" />
           Add course
@@ -273,75 +274,68 @@ const handleAssignSave = ({ assignedUserIds }) => {
       <div class="relative flex-1 min-w-[200px] max-w-sm">
         <Search
           :size="15"
-          class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          class="absolute left-3 top-1/2 -translate-y-1/2 text-asi-gray"
         />
         <input
           v-model="search"
           placeholder="Search courses..."
-          class="w-full pl-9 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+          class="w-full pl-9 pr-4 h-10 text-sm bg-white border border-asi-border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#462C6B]/20 focus:border-[#462C6B] text-asi-black shadow-sm"
         />
       </div>
 
-      <div class="flex items-center gap-2 flex-wrap">
-        <button
-          v-for="cat in CATEGORIES"
-          :key="cat"
-          type="button"
-          @click="category = cat"
-          :class="clsx(
-            'px-3 py-1.5 text-xs font-medium rounded-full border transition-all',
-            category === cat
-              ? 'bg-[#1a3a5c] text-white border-[#1a3a5c]'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-          )"
+      <div class="relative">
+        <select
+          v-model="category"
+          class="appearance-none h-10 pl-4 pr-9 text-sm bg-white border border-asi-border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#462C6B]/20 focus:border-[#462C6B] text-asi-black cursor-pointer shadow-sm"
         >
-          {{ cat }}
-        </button>
+          <option v-for="cat in CATEGORIES" :key="cat" :value="cat">{{ cat }}</option>
+        </select>
+        <ChevronDown :size="14" class="absolute right-3 top-1/2 -translate-y-1/2 text-asi-gray pointer-events-none" />
       </div>
     </div>
 
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+    <div class="bg-white rounded-2xl border border-asi-border shadow-sm overflow-hidden">
       <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
-          <thead class="bg-gray-50 border-b border-gray-200">
+          <thead class="bg-asi-surface border-b border-asi-border">
             <tr>
-              <th class="text-left px-4 py-3 font-semibold text-gray-700">Course</th>
-              <th class="text-left px-4 py-3 font-semibold text-gray-700">Code</th>
-              <th class="text-left px-4 py-3 font-semibold text-gray-700">Category</th>
-              <th class="text-left px-4 py-3 font-semibold text-gray-700">Price</th>
-              <th class="text-left px-4 py-3 font-semibold text-gray-700">Last updated on</th>
-              <th class="text-right px-4 py-3 font-semibold text-gray-700">Actions</th>
+              <th class="text-left px-4 py-3 font-semibold text-asi-black">Course</th>
+              <th class="text-left px-4 py-3 font-semibold text-asi-black">Code</th>
+              <th class="text-left px-4 py-3 font-semibold text-asi-black">Category</th>
+              <th class="text-left px-4 py-3 font-semibold text-asi-black">Price</th>
+              <th class="text-left px-4 py-3 font-semibold text-asi-black">Last updated on</th>
+              <th class="text-right px-4 py-3 font-semibold text-asi-black">Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr
               v-for="course in filtered"
               :key="course.id"
-              class="border-b border-gray-100 hover:bg-gray-50/80"
+              class="border-b border-asi-border hover:bg-asi-surface"
             >
               <td class="px-4 py-3">
                 <div class="flex items-center gap-3">
                   <div
-                    :class="clsx('w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold', course.color || 'bg-slate-400')"
+                    :class="clsx('w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold', course.color || 'bg-asi-purple')"
                   >
                     {{ course.title?.[0] || 'C' }}
                   </div>
                   <div class="min-w-0">
-                    <p class="font-semibold text-gray-900 truncate">{{ course.title }}</p>
+                    <p class="font-semibold text-asi-black truncate">{{ course.title }}</p>
                     <div class="flex items-center gap-2 mt-0.5">
                       <span
                         :class="clsx(
                           'text-xs font-semibold px-2 py-0.5 rounded-full',
                           course.status === 'Published'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-600'
+                            ? 'bg-asi-purple-light text-asi-purple'
+                            : 'bg-asi-surface text-asi-gray'
                         )"
                       >
                         {{ course.status || 'Inactive' }}
                       </span>
                       <span
                         v-if="course.contentType === 'scorm12'"
-                        class="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100"
+                        class="text-xs font-medium px-2 py-0.5 rounded-full bg-asi-purple-light text-asi-lavender border border-asi-border"
                       >
                         SCORM 1.2
                       </span>
@@ -349,15 +343,15 @@ const handleAssignSave = ({ assignedUserIds }) => {
                   </div>
                 </div>
               </td>
-              <td class="px-4 py-3 text-gray-600">{{ course.code || '-' }}</td>
-              <td class="px-4 py-3 text-gray-600">{{ course.category || '-' }}</td>
-              <td class="px-4 py-3 text-gray-600">{{ course.price || '-' }}</td>
-              <td class="px-4 py-3 text-gray-600">{{ course.updatedAt || '-' }}</td>
+              <td class="px-4 py-3 text-asi-gray">{{ course.code || '-' }}</td>
+              <td class="px-4 py-3 text-asi-gray">{{ course.category || '-' }}</td>
+              <td class="px-4 py-3 text-asi-gray">{{ course.price || '-' }}</td>
+              <td class="px-4 py-3 text-asi-gray">{{ course.updatedAt || '-' }}</td>
               <td class="px-4 py-3">
                 <div class="flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    class="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+                    class="p-2 rounded-lg hover:bg-asi-surface text-asi-gray"
                     title="Preview as learner"
                     @click="openLearnerPreview(course)"
                   >
@@ -369,17 +363,17 @@ const handleAssignSave = ({ assignedUserIds }) => {
                     :class="clsx(
                       'p-2 rounded-lg transition-colors',
                       canAssignCourse(course)
-                        ? 'hover:bg-blue-50 text-blue-700'
-                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        ? 'hover:bg-asi-purple-light text-asi-purple'
+                        : 'bg-asi-surface text-asi-gray cursor-not-allowed'
                     )"
-                    :title="canAssignCourse(course) ? 'Assign learners' : 'Publish course to enable assignment'"
+                    :title="canAssignCourse(course) ? 'Assign learners' : 'Make the course status from draft to published to enable assignment'"
                     @click="openAssignModal(course)"
                   >
                     <UsersIcon :size="16" />
                   </button>
                   <button
                     type="button"
-                    class="p-2 rounded-lg hover:bg-gray-100 text-gray-700"
+                    class="p-2 rounded-lg hover:bg-asi-surface text-asi-gray"
                     title="Edit"
                     @click="openEditCourseModal(course)"
                   >
@@ -397,7 +391,7 @@ const handleAssignSave = ({ assignedUserIds }) => {
               </td>
             </tr>
             <tr v-if="!loading && filtered.length === 0">
-              <td colspan="6" class="px-4 py-10 text-center text-sm text-gray-500">
+              <td colspan="6" class="px-4 py-10 text-center text-sm text-asi-gray">
                 No courses found.
               </td>
             </tr>

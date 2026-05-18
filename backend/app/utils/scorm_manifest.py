@@ -11,10 +11,38 @@ import os
 from dataclasses import dataclass
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from posixpath import dirname, join, normpath
+from urllib.parse import unquote, urldefrag, urlsplit
 
 
 def _local(tag: str) -> str:
     return tag.split("}")[-1] if "}" in tag else tag
+
+
+def _clean_href_path(href: str) -> str:
+    """Return only the filesystem path portion of a manifest href."""
+    without_fragment, _ = urldefrag(href)
+    parsed = urlsplit(without_fragment)
+    return unquote(parsed.path).lstrip("/")
+
+
+def _mapped_launch_path(
+    manifest_path: Path,
+    unpacked_root: Path,
+    href: str,
+    filename_map: dict[str, str] | None,
+) -> Path:
+    """Resolve a manifest href, accounting for ASCII-normalised ZIP paths."""
+    clean_href = _clean_href_path(href)
+    if not filename_map:
+        return (manifest_path.parent / clean_href).resolve()
+
+    reverse_map = {safe: original for original, safe in filename_map.items()}
+    manifest_safe_rel = os.path.relpath(manifest_path, unpacked_root).replace("\\", "/")
+    manifest_original_rel = reverse_map.get(manifest_safe_rel, manifest_safe_rel)
+    launch_original_rel = normpath(join(dirname(manifest_original_rel), clean_href)).lstrip("/")
+    launch_safe_rel = filename_map.get(launch_original_rel, launch_original_rel)
+    return (unpacked_root / launch_safe_rel).resolve()
 
 
 def _sco_attrs(resource_el: ET.Element) -> tuple[str | None, bool]:
@@ -246,7 +274,9 @@ class ScormPackageParseResult:
 
 
 def parse_scorm_package(
-    unpacked_root: Path, course_storage_root: Path
+    unpacked_root: Path,
+    course_storage_root: Path,
+    filename_map: dict[str, str] | None = None,
 ) -> ScormPackageParseResult | None:
     """
     Full parse: imsmanifest path, metadata, launch path stored as under course root.
@@ -275,8 +305,7 @@ def parse_scorm_package(
     if not pair:
         return None
     _, href = pair
-    manifest_dir = manifest_path.parent
-    launch_abs = (manifest_dir / href).resolve()
+    launch_abs = _mapped_launch_path(manifest_path, unpacked_root, href, filename_map)
     unpacked_resolved = unpacked_root.resolve()
     try:
         launch_abs.relative_to(unpacked_resolved)

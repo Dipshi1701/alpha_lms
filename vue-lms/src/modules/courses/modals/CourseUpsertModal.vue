@@ -1,6 +1,6 @@
 <script setup>
 import { reactive, ref, watch } from 'vue'
-import { X, Upload, Archive, Loader2 } from 'lucide-vue-next'
+import { X, Upload, Archive, Loader2, ShieldAlert } from 'lucide-vue-next'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -34,7 +34,7 @@ watch(
     form.title = props.initialValue?.title || ''
     form.category = props.initialValue?.category || 'General'
     form.status = props.initialValue?.status || 'Draft'
-    form.description = props.initialValue?.description || ''
+    form.description = props.initialValue?.description || ''  
     form.selectedFileName = ''
     scormFileRef.value = null
     formErrors.title = ''
@@ -90,20 +90,17 @@ const submit = () => {
     v-if="open"
     class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
   >
-    <div class="w-full max-w-2xl max-h-[85vh] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col">
-      <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="w-full max-w-2xl max-h-[85vh] bg-white rounded-2xl shadow-2xl border border-asi-border flex flex-col">
+      <div class="px-6 py-4 border-b border-asi-border flex items-center justify-between">
         <div>
-          <h2 class="text-base font-semibold text-gray-800">
+          <h2 class="text-base font-semibold text-asi-black">
             {{ mode === 'edit' ? 'Edit course' : 'Add course' }}
           </h2>
-          <p class="text-xs text-gray-500 mt-0.5">
-            SCORM 1.2 ZIP — validated on upload
-          </p>
         </div>
         <button
           @click="emit('close')"
           :disabled="saving"
-          class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+          class="p-1.5 rounded-lg hover:bg-asi-surface text-asi-gray"
         >
           <X :size="18" />
         </button>
@@ -112,23 +109,23 @@ const submit = () => {
       <div class="p-6 space-y-5 overflow-y-auto min-h-[200px]">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1.5">Course title</label>
+            <label class="block text-xs font-semibold text-asi-gray mb-1.5">Course title</label>
             <input
               v-model="form.title"
               :disabled="saving"
               required
               placeholder="e.g. Workplace Safety Basics"
-              class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              class="w-full px-3 py-2 text-sm border border-asi-border rounded-lg focus:outline-none focus:ring-2 focus:ring-asi-purple/20 focus:border-asi-lavender text-asi-black"
             />
             <p v-if="formErrors.title" class="mt-1 text-xs text-red-600">{{ formErrors.title }}</p>
           </div>
           <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1.5">Category</label>
+            <label class="block text-xs font-semibold text-asi-gray mb-1.5">Category</label>
             <select
               v-model="form.category"
               :disabled="saving"
               required
-              class="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              class="w-full px-3 py-2 text-sm bg-white border border-asi-border rounded-lg focus:outline-none focus:ring-2 focus:ring-asi-purple/20 focus:border-asi-lavender text-asi-black"
             >
               <option
                 v-for="cat in categories.filter((c) => c !== 'All')"
@@ -144,48 +141,47 @@ const submit = () => {
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1.5">Status</label>
+            <label class="block text-xs font-semibold text-asi-gray mb-1.5">Status</label>
             <select
               v-model="form.status"
               :disabled="saving"
               required
-              class="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              class="w-full px-3 py-2 text-sm bg-white border border-asi-border rounded-lg focus:outline-none focus:ring-2 focus:ring-asi-purple/20 focus:border-asi-lavender text-asi-black"
             >
               <option value="Draft">Draft</option>
               <option value="Published">Published</option>
             </select>
             <p v-if="formErrors.status" class="mt-1 text-xs text-red-600">{{ formErrors.status }}</p>
           </div>
-          <div class="hidden md:block" />
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1.5">Description</label>
+          <label class="block text-xs font-semibold text-asi-gray mb-1.5">Description</label>
           <textarea
             v-model="form.description"
             :disabled="saving"
             required
             rows="3"
             placeholder="Short overview shown to learners..."
-            class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+            class="w-full px-3 py-2 text-sm border border-asi-border rounded-lg focus:outline-none focus:ring-2 focus:ring-asi-purple/20 focus:border-asi-lavender text-asi-black"
           />
           <p v-if="formErrors.description" class="mt-1 text-xs text-red-600">{{ formErrors.description }}</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1.5">Content type</label>
-            <div class="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
+            <label class="block text-xs font-semibold text-asi-gray mb-1.5">Content type</label>
+            <div class="w-full px-3 py-2 text-sm bg-asi-surface border border-asi-border rounded-lg text-asi-gray">
               SCORM 1.2 (ZIP) — v0
             </div>
           </div>
           <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1.5">Upload SCORM ZIP</label>
+            <label class="block text-xs font-semibold text-asi-gray mb-1.5">Upload SCORM ZIP</label>
             <label
-              class="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
+              class="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-asi-border rounded-lg cursor-pointer hover:border-asi-lavender hover:bg-asi-purple-light/30 transition-colors"
             >
-              <Upload :size="14" class="text-gray-500" />
-              <span class="text-gray-600">
+              <Upload :size="14" class="text-asi-gray" />
+              <span class="text-asi-gray">
                 {{ form.selectedFileName || 'Choose a .zip file' }}
               </span>
               <input
@@ -201,7 +197,7 @@ const submit = () => {
           </div>
         </div>
 
-        <div class="rounded-xl border px-4 py-3 text-sm flex items-start gap-2 border-purple-200 bg-purple-50 text-purple-700">
+        <div class="rounded-xl border px-4 py-3 text-sm flex items-start gap-2 border-asi-border bg-asi-purple-light text-asi-purple">
           <Archive :size="15" class="mt-0.5 flex-shrink-0" />
           <p>
             After save, the ZIP is validated and extracted on the server. Publish only works once SCORM is valid.
@@ -209,18 +205,18 @@ const submit = () => {
         </div>
       </div>
 
-      <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+      <div class="px-6 py-4 border-t border-asi-border flex items-center justify-end gap-2">
         <button
           @click="emit('close')"
           :disabled="saving"
-          class="px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+          class="px-3 py-2 text-sm font-medium text-asi-gray hover:bg-asi-surface rounded-lg"
         >
           Cancel
         </button>
         <button
           @click="submit"
           :disabled="saving"
-          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#1a3a5c] rounded-lg hover:bg-[#162f4a] transition-colors disabled:opacity-60"
+          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-asi-purple rounded-lg hover:bg-[#5a3a8a] transition-colors disabled:opacity-60"
         >
           <Loader2 v-if="saving" :size="15" class="animate-spin" />
           {{ saving ? 'Saving...' : mode === 'edit' ? 'Save changes' : 'Create course' }}

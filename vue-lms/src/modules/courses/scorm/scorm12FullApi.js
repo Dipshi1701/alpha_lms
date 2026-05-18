@@ -36,6 +36,10 @@ function initSCOState() {
         total_time:      d.total_time      || '0000:00:00.00',
         lesson_status:   d.lesson_status   || 'not attempted',
         datafromlms:     d.datafromlms     || '',   // data from the course manifest
+        masteryscore:    d.masteryscore    || '',
+        maxtimeallowed:  d.maxtimeallowed  || '',
+        timelimitaction: d.timelimitaction || '',
+        comments_from_lms: d.comments_from_lms || '',
         score:           d.score_raw       || '',   // last raw score
         entry:           d.entry           || 'ab-initio'
     };
@@ -308,6 +312,77 @@ function buildCmi() {
                     if (!isValidType(param, 'CMITimespan')) throwError('405');
                     this.value = param;
                     SCOState.session_time = param;
+                    return 'true';
+                }
+            }
+        },
+
+        // ── SCORM 2004 compatibility aliases ───────────────────
+        // Some packages use SCORM 2004 field names even after finding
+        // a SCORM 1.2 API. Map those calls onto the 1.2 state we store.
+        completion_status: {
+            value: '',
+            get: function() {
+                var status = SCOState.lesson_status || 'not attempted';
+                if (status === 'passed' || status === 'failed') return 'completed';
+                if (status === 'completed' || status === 'incomplete' || status === 'not attempted') return status;
+                return 'unknown';
+            },
+            set: function(param) {
+                if (!/^(completed|incomplete|not attempted|unknown)$/.test(param)) throwError('405');
+                this.value = param;
+                if (param !== 'unknown') {
+                    SCOState.lesson_status = param;
+                    cmi.core.lesson_status.value = param;
+                }
+                return 'true';
+            }
+        },
+
+        success_status: {
+            value: '',
+            get: function() {
+                var status = SCOState.lesson_status || '';
+                if (status === 'passed') return 'passed';
+                if (status === 'failed') return 'failed';
+                return 'unknown';
+            },
+            set: function(param) {
+                if (!/^(passed|failed|unknown)$/.test(param)) throwError('405');
+                this.value = param;
+                if (param === 'passed' || param === 'failed') {
+                    SCOState.lesson_status = param;
+                    cmi.core.lesson_status.value = param;
+                }
+                return 'true';
+            }
+        },
+
+        score: {
+            _children: {
+                value: 'raw,min,max,scaled',
+                get: function() { return this.value; },
+                set: function() { throwError('402'); }
+            },
+            raw: {
+                value: SCOState.score || '',
+                get: function() { return this.value; },
+                set: function(param) {
+                    if (!isValidScoreOrBlank(param)) throwError('405');
+                    this.value = param;
+                    cmi.core.score.raw.value = param;
+                    SCOState.score = param;
+                    return 'true';
+                }
+            },
+            min: makeScoreField('minscore'),
+            max: makeScoreField('maxscore'),
+            scaled: {
+                value: '',
+                get: function() { return this.value; },
+                set: function(param) {
+                    if (param !== '' && (!isValidType(param, 'CMIDecimal') || param < -1 || param > 1)) throwError('405');
+                    this.value = param;
                     return 'true';
                 }
             }

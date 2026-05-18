@@ -1,4 +1,6 @@
 import StubPage from './views/StubPage.vue'
+import CalendarView from './views/CalendarView.vue'
+import CatalogView from './views/CatalogView.vue'
 
 export const miscRoutes = [
   {
@@ -8,13 +10,11 @@ export const miscRoutes = [
   },
   {
     path: 'calendar',
-    component: StubPage,
-    props: { title: 'Calendar' },
+    component: CalendarView,
   },
   {
     path: 'catalog',
-    component: StubPage,
-    props: { title: 'Catalog' },
+    component: CatalogView,
   },
   {
     path: 'skills',

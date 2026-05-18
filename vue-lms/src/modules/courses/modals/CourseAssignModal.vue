@@ -43,17 +43,17 @@ const submit = () => {
     v-if="open"
     class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
   >
-    <div class="w-full max-w-xl max-h-[85vh] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col">
-      <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="w-full max-w-xl max-h-[85vh] bg-white rounded-2xl shadow-2xl border border-asi-border flex flex-col">
+      <div class="px-6 py-4 border-b border-asi-border flex items-center justify-between">
         <div>
-          <h2 class="text-base font-semibold text-gray-800">Assign course</h2>
-          <p class="text-xs text-gray-500 mt-0.5">
+          <h2 class="text-base font-semibold text-asi-black">Assign course</h2>
+          <p class="text-xs text-asi-gray mt-0.5">
             {{ courseTitle }}
           </p>
         </div>
         <button
           @click="emit('close')"
-          class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+          class="p-1.5 rounded-lg hover:bg-asi-surface text-asi-gray"
         >
           <X :size="18" />
         </button>
@@ -61,8 +61,8 @@ const submit = () => {
 
       <div class="p-6 space-y-3 overflow-y-auto min-h-[200px]">
         <div class="flex items-center gap-2">
-          <UserPlus :size="14" class="text-gray-500" />
-          <p class="text-sm text-gray-700">
+          <UserPlus :size="14" class="text-asi-gray" />
+          <p class="text-sm text-asi-gray">
             Select learners to assign this course.
           </p>
         </div>
@@ -70,11 +70,11 @@ const submit = () => {
           <label
             v-for="u in users"
             :key="u.id"
-            class="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2 cursor-pointer hover:border-blue-300 transition-colors"
+            class="flex items-center justify-between border border-asi-border rounded-lg px-3 py-2 cursor-pointer hover:border-asi-lavender transition-colors"
           >
             <div>
-              <p class="text-sm font-medium text-gray-700">{{ u.name }}</p>
-              <p class="text-xs text-gray-400">{{ u.role }}</p>
+              <p class="text-sm font-medium text-asi-black">{{ u.name }}</p>
+              <p class="text-xs text-asi-gray">{{ u.role }}</p>
             </div>
             <button
               type="button"
@@ -82,8 +82,8 @@ const submit = () => {
               :class="clsx(
                 'text-xs font-semibold px-2 py-1 rounded-md border',
                 form.assignedUserIds.includes(u.id)
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-300'
+                  ? 'bg-asi-purple text-white border-asi-purple'
+                  : 'bg-white text-asi-gray border-asi-border'
               )"
             >
               {{ form.assignedUserIds.includes(u.id) ? 'Assigned' : 'Assign' }}
@@ -92,16 +92,16 @@ const submit = () => {
         </div>
       </div>
 
-      <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+      <div class="px-6 py-4 border-t border-asi-border flex items-center justify-end gap-2">
         <button
           @click="emit('close')"
-          class="px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+          class="px-3 py-2 text-sm font-medium text-asi-gray hover:bg-asi-surface rounded-lg"
         >
           Cancel
         </button>
         <button
           @click="submit"
-          class="px-4 py-2 text-sm font-semibold text-white bg-[#1a3a5c] rounded-lg hover:bg-[#162f4a] transition-colors"
+          class="px-4 py-2 text-sm font-semibold text-white bg-asi-purple rounded-lg hover:bg-[#5a3a8a] transition-colors"
         >
           Save assignment
         </button>

@@ -19,8 +19,8 @@ const toggle = () => {
       <main class="flex-1 overflow-y-auto">
         <RouterView />
       </main>
-      <footer class="py-3 text-center text-xs text-gray-400 bg-white border-t border-gray-100">
-        Powered by <span class="font-semibold text-gray-600">Alpha Learn</span>
+      <footer class="py-3 text-center text-xs text-asi-gray bg-white border-t border-asi-border">
+        Powered by <span class="font-semibold text-asi-purple">Alphanumeric Innovation</span>
       </footer>
     </div>
   </div>

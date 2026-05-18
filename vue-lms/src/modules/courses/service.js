@@ -102,6 +102,7 @@ function mapCourse(course) {
           timeStyle: 'short',
         })
       : '—',
+    updatedAtRaw: course.updated_at || null,
     color: COURSE_COLORS[Math.abs(Number(course.id)) % COURSE_COLORS.length],
   }
 }

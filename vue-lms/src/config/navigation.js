@@ -71,7 +71,8 @@ export const NAV_ITEMS = [
     label: 'Groups',
     icon: Users2,
     to: '/groups',
-    roles: [ROLES.ADMIN, ROLES.INSTRUCTOR]
+    roles: [ROLES.ADMIN, ROLES.INSTRUCTOR],
+    disabled: true,
   },
   
   // ===== ADMIN ONLY (with submenu) =====
@@ -81,6 +82,7 @@ export const NAV_ITEMS = [
     to: '/course-store',
     roles: [ROLES.ADMIN],
     arrow: true,
+    disabled: true,
     children: [
       { label: 'All courses',    to: '/course-store' },
       { label: 'My purchases',   to: '/course-store/purchases' },
@@ -99,7 +101,8 @@ export const NAV_ITEMS = [
     label: 'Notifications',
     icon: Bell,
     to: '/notifications',
-    roles: [ROLES.ADMIN]
+    roles: [ROLES.ADMIN],
+    disabled: true,
   },
   
   // ===== INSTRUCTOR ONLY =====
@@ -138,7 +141,8 @@ export const NAV_ITEMS = [
     icon: BarChart2,
     to: '/reports',
     roles: [ROLES.ADMIN, ROLES.INSTRUCTOR],
-    arrow: true
+    arrow: true,
+    disabled: true,
   },
   
   // ===== ADMIN ONLY =====
@@ -147,7 +151,8 @@ export const NAV_ITEMS = [
     icon: Settings,
     to: '/account-settings',
     roles: [ROLES.ADMIN],
-    arrow: true
+    arrow: true,
+    disabled: true,
   }
 ]
 
