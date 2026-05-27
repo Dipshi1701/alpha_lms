@@ -8,7 +8,7 @@ from app import config
 from app.database import Base, engine
 from app.response import error_response, success_response
 from app.seed import seed_database
-from app.routes import auth, courses, users
+from app.routes import auth, courses, notifications, users
 from app.routes import scorm as scorm_routes
 
 # Create all database tables (runs once on startup; safe to re-run)
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(courses.router, prefix="/api/courses", tags=["courses"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(scorm_routes.router, prefix="/api/scorm", tags=["scorm"])
 
 # Serve uploaded SCORM files at /scorm-content/{course_id}/...

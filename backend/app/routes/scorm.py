@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -50,6 +50,12 @@ class InteractionPayload(BaseModel):
     result:            Optional[str]                    = ""
     latency:           Optional[str]                    = ""
     correct_responses: Optional[List[Dict[str, Any]]]  = []
+
+    @field_validator("id", "weighting", mode="before")
+    @classmethod
+    def coerce_to_str(cls, v: Any) -> str:
+        # Keep DB/string fields consistent: treat None as empty string.
+        return "" if v is None else str(v)
 
 
 class ScormCommitPayload(BaseModel):
@@ -80,6 +86,12 @@ class ScormCommitPayload(BaseModel):
     maxscore: Optional[str] = ""
 
     interactions: Optional[List[InteractionPayload]] = []
+
+    @field_validator("score", "minscore", "maxscore", mode="before")
+    @classmethod
+    def coerce_score_fields(cls, v: Any) -> str:
+        # Keep DB/string fields consistent: treat None as empty string.
+        return "" if v is None else str(v)
 
 
 # ═══════════════════════════════════════════════════════════════

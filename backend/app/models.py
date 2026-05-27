@@ -90,6 +90,23 @@ class CourseAssignment(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 
+class Notification(Base):
+    """In-app notification for a user (e.g. course assigned)."""
+
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    type = Column(String(64), nullable=False)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    read = Column(Boolean, default=False, nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
 class ScormProgress(Base):
     """
     One row per user+course pair.

@@ -112,3 +112,26 @@ class ScormUploadResponse(BaseModel):
     scorm_manifest_title: Optional[str] = None
     scorm_package_sha256: Optional[str] = None
     scorm_package_bytes: Optional[int] = None
+
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+class NotificationResponse(BaseModel):
+    id: int
+    type: str
+    title: str
+    message: str
+    read: bool
+    course_id: Optional[int] = None
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class NotificationsListResponse(BaseModel):
+    items: List[NotificationResponse]
+    unread_count: int
+
+
+class NotificationPatchBody(BaseModel):
+    id: Optional[int] = None
+    read_all: bool = False

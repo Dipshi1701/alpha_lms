@@ -16,6 +16,7 @@ from app.schemas import (
     CourseUpdate, LaunchResponse, ScormUploadResponse, UserResponse,
 )
 from app.security import get_current_user, require_roles
+from app.services.notification_service import notify_course_assigned
 from app.utils.scorm_manifest import parse_scorm_package
 from app.utils.scorm_zip import safe_extract_zip, validate_zip_bytes
 
@@ -194,9 +195,13 @@ def assign_course(
     c = db.query(Course).filter(Course.id == course_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Course not found")
+    existing_ids = set(get_assigned_ids(db, course_id))
+    new_user_ids = set(body.user_ids) - existing_ids
     db.query(CourseAssignment).filter(CourseAssignment.course_id == course_id).delete()
     for uid in set(body.user_ids):
         db.add(CourseAssignment(course_id=course_id, user_id=uid, assigned_by_id=current_user.id))
+    if new_user_ids:
+        notify_course_assigned(db, user_ids=list(new_user_ids), course=c)
     db.commit()
     return success_response(
         message="Course assignments updated successfully",
