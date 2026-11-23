@@ -80,6 +80,20 @@ const COURSE_COLORS = [
   'bg-orange-400',
 ]
 
+// G012: one learner's existing CourseAssignment for this course, as
+// derived/returned by the backend (see app/schemas.CourseAssignmentBrief).
+// `source` is "individual" | "group" — never persisted client-side, just
+// passed through for display/duplicate-prevention.
+function mapAssignmentBrief(a) {
+  return {
+    userId: a.user_id,
+    assignedAt: a.assigned_at,
+    dueDate: a.due_date,
+    source: a.source,
+    sourceGroupName: a.source_group_name || null,
+  }
+}
+
 function mapCourse(course) {
   if (!course) return null
   return {
@@ -91,11 +105,18 @@ function mapCourse(course) {
     price: course.price,
     status: course.status,
     contentType: course.content_type,
+    // G012: days a learner gets from THEIR OWN assignment date — a
+    // per-course default, never a fixed course-level due date.
+    assignmentDurationDays: course.assignment_duration_days,
     scormZipName: course.scorm_zip_name,
     scormLaunchRelative: course.scorm_launch_relative,
     scormManifestTitle: course.scorm_manifest_title,
     scormValidatedAt: course.scorm_validated_at,
     assignedUserIds: course.assigned_user_ids || [],
+    // G012: read view over existing CourseAssignment rows for this course
+    // (assigned_at/due_date/derived source) — scoped to just the caller's
+    // own row when they are a Learner (see backend courses.py).
+    learnerAssignments: (course.learner_assignments || []).map(mapAssignmentBrief),
     updatedAt: course.updated_at
       ? new Date(course.updated_at).toLocaleString(undefined, {
           dateStyle: 'medium',

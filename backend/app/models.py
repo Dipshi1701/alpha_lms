@@ -38,6 +38,54 @@ class User(Base):
     roles = relationship("Role", secondary=user_roles, back_populates="users")
 
 
+class Group(Base):
+    """A named collection of learners that instructors/administrators manage together."""
+
+    __tablename__ = "groups"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    members = relationship("GroupMember", back_populates="group", cascade="all, delete-orphan")
+    managers = relationship("GroupManager", back_populates="group", cascade="all, delete-orphan")
+    course_assignments = relationship(
+        "GroupCourseAssignment", back_populates="group", cascade="all, delete-orphan"
+    )
+
+
+class GroupMember(Base):
+    """Links a learner (User) to a Group they belong to."""
+
+    __tablename__ = "group_members"
+    __table_args__ = (UniqueConstraint("group_id", "user_id"),)
+
+    id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    added_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    group = relationship("Group", back_populates="members")
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class GroupManager(Base):
+    """Links an instructor (User) who manages a Group."""
+
+    __tablename__ = "group_managers"
+    __table_args__ = (UniqueConstraint("group_id", "user_id"),)
+
+    id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    group = relationship("Group", back_populates="managers")
+    user = relationship("User", foreign_keys=[user_id])
+
+
 class Course(Base):
     __tablename__ = "courses"
 
@@ -49,6 +97,15 @@ class Course(Base):
     price = Column(String(32))
     status = Column(String(20), default="Draft", nullable=False)  # Draft or Published
     content_type = Column(String(32), default="scorm12", nullable=False)
+
+    # G012: number of days a learner has from THEIR OWN CourseAssignment.
+    # assigned_at (never course.created_at) to complete this course. This
+    # is only a DEFAULT applied to new CourseAssignment rows going forward
+    # -- changing it never recalculates any existing CourseAssignment.due_date
+    # (see CourseAssignment.due_date below, and routes/courses.py). Defaults
+    # to 7 for backward compatibility with courses created before this field
+    # existed (see migration 0005) -- the course remains fully editable.
+    assignment_duration_days = Column(Integer, default=7, nullable=False)
 
     # SCORM package metadata (filled after upload)
     scorm_zip_name = Column(String(255))
@@ -72,6 +129,9 @@ class Course(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     assignments = relationship("CourseAssignment", back_populates="course", cascade="all, delete-orphan")
+    group_assignments = relationship(
+        "GroupCourseAssignment", back_populates="course", cascade="all, delete-orphan"
+    )
 
 
 class CourseAssignment(Base):
@@ -84,10 +144,42 @@ class CourseAssignment(Base):
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # G012: assigned_at + Course.assignment_duration_days, computed once at
+    # the time THIS row is created (see routes/courses.assign_course and
+    # services/group_service.sync_group_course_assignment_to_learners).
+    # Nullable only so CourseAssignment rows that already existed before
+    # this column was introduced are left as-is -- no retroactive backfill
+    # (see migration 0005). Every row created from here on always gets one.
+    due_date = Column(DateTime, nullable=True)
     assigned_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
 
     course = relationship("Course", back_populates="assignments")
     user = relationship("User", foreign_keys=[user_id])
+
+
+class GroupCourseAssignment(Base):
+    """
+    Links a Group to a Course it has been collectively assigned.
+
+    This is the Group -> Course assignment relationship only (see G007 for
+    the Group -> GroupMembers -> CourseAssignment expansion). There is
+    intentionally no due_date column here even though CourseAssignment has
+    one (G012): a due date is a per-learner concept (each learner's own
+    assigned_at + Course.assignment_duration_days), not a per-group one, so
+    it lives on CourseAssignment only — see group_service.compute_due_date.
+    """
+
+    __tablename__ = "group_course_assignments"
+    __table_args__ = (UniqueConstraint("group_id", "course_id"),)
+
+    id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    assigned_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+
+    group = relationship("Group", back_populates="course_assignments")
+    course = relationship("Course", back_populates="group_assignments")
 
 
 class Notification(Base):

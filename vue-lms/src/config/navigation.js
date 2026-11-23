@@ -72,7 +72,6 @@ export const NAV_ITEMS = [
     icon: Users2,
     to: '/groups',
     roles: [ROLES.ADMIN, ROLES.INSTRUCTOR],
-    disabled: true,
   },
   
   // ===== ADMIN ONLY (with submenu) =====

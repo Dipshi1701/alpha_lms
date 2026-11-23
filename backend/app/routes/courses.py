@@ -2,6 +2,7 @@ import hashlib
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -12,10 +13,11 @@ from app.models import Course, CourseAssignment, Role, User
 from app.response import success_response
 from app.routes.users import user_to_response
 from app.schemas import (
-    AssignCoursesBody, CourseCreate, CourseResponse,
+    AssignCoursesBody, CourseAssignmentBrief, CourseCreate, CourseResponse,
     CourseUpdate, LaunchResponse, ScormUploadResponse, UserResponse,
 )
 from app.security import get_current_user, require_roles
+from app.services import group_service as gs
 from app.services.notification_service import notify_course_assigned
 from app.utils.scorm_manifest import parse_scorm_package
 from app.utils.scorm_zip import safe_extract_zip, validate_zip_bytes
@@ -32,9 +34,46 @@ def get_assigned_ids(db: Session, course_id: int) -> list[int]:
     return [r[0] for r in rows]
 
 
-def course_to_response(db: Session, c: Course) -> CourseResponse:
+def get_course_assignment_briefs(
+    db: Session, course_id: int, *, current_user: Optional[User] = None
+) -> list[CourseAssignmentBrief]:
+    """
+    Read view over the existing CourseAssignment rows for a course --
+    powers duplicate-prevention + Assigned/Due/Source display in the UI
+    (G012). Does not create a second assignment system: `source` is
+    derived, not persisted (see group_service.resolve_assignment_source).
+
+    If `current_user` currently holds the Learner role, the result is
+    scoped to that learner's own row only, so a Learner calling
+    /api/courses/me or GET /api/courses/{id} never sees another learner's
+    assigned_at/due_date.
+    """
+    query = db.query(CourseAssignment).filter(CourseAssignment.course_id == course_id)
+    if current_user is not None and "Learner" in {r.name for r in current_user.roles}:
+        query = query.filter(CourseAssignment.user_id == current_user.id)
+    rows = query.order_by(CourseAssignment.user_id).all()
+
+    briefs: list[CourseAssignmentBrief] = []
+    for row in rows:
+        source, group_name = gs.resolve_assignment_source(
+            db, course_id=course_id, user_id=row.user_id, assigned_at=row.assigned_at
+        )
+        briefs.append(
+            CourseAssignmentBrief(
+                user_id=row.user_id,
+                assigned_at=row.assigned_at,
+                due_date=row.due_date,
+                source=source,
+                source_group_name=group_name,
+            )
+        )
+    return briefs
+
+
+def course_to_response(db: Session, c: Course, current_user: Optional[User] = None) -> CourseResponse:
     data = CourseResponse.model_validate(c)
     data.assigned_user_ids = get_assigned_ids(db, c.id)
+    data.learner_assignments = get_course_assignment_briefs(db, c.id, current_user=current_user)
     return data
 
 
@@ -68,7 +107,7 @@ def my_courses(
         .order_by(Course.title)
         .all()
     )
-    payload = [course_to_response(db, c).model_dump() for c in courses]
+    payload = [course_to_response(db, c, current_user).model_dump() for c in courses]
     return success_response(message="My courses fetched successfully", data=payload)
 
 
@@ -108,6 +147,7 @@ def create_course(
         price=body.price.strip() if body.price else None,
         status="Draft",
         content_type="scorm12",
+        assignment_duration_days=body.assignment_duration_days,
     )
     db.add(c)
     db.commit()
@@ -133,7 +173,7 @@ def get_course(
         ).first()
         if c.status != "Published" or not assigned:
             raise HTTPException(status_code=403, detail="Not allowed")
-    payload = course_to_response(db, c).model_dump()
+    payload = course_to_response(db, c, current_user).model_dump()
     return success_response(message="Course fetched successfully", data=payload)
 
 
@@ -161,6 +201,11 @@ def update_course(
         if body.status == "Published" and not has_valid_scorm(c):
             raise HTTPException(status_code=400, detail="Upload a SCORM package before publishing")
         c.status = body.status
+    if body.assignment_duration_days is not None:
+        # PART 11: the course stays editable at any time; this only affects
+        # NEW CourseAssignment rows created from now on -- existing
+        # assigned_at/due_date values are never recalculated.
+        c.assignment_duration_days = body.assignment_duration_days
     db.commit()
     db.refresh(c)
     payload = course_to_response(db, c).model_dump()
@@ -191,21 +236,58 @@ def assign_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("Administrator", "Instructor")),
 ):
-    """Replace all learner assignments for a course with the given user_ids list."""
+    """
+    Set the desired learner user_ids for a course to exactly `body.user_ids`.
+
+    G012: unlike the previous delete-all/recreate-all implementation, this
+    only touches rows that actually change:
+      * a user no longer in the desired set -> their CourseAssignment row
+        is deleted (this IS the existing supported unassign flow -- PART 12).
+      * a user already assigned who remains in the desired set -> their row
+        (assigned_at, due_date, assigned_by_id) is left completely
+        untouched. This matters even more now than before: it protects
+        group-derived CourseAssignment rows that happen to be included in
+        the desired set (e.g. because the caller pre-fills the request
+        with the course's current assignees, as the frontend does), and it
+        stops assigned_at/due_date from being silently reset every time
+        this endpoint is called again for the same course.
+      * a genuinely new user -> a fresh CourseAssignment row is created
+        with assigned_at = now and due_date computed from that same
+        assigned_at and the course's *current* assignment_duration_days.
+    """
     c = db.query(Course).filter(Course.id == course_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Course not found")
-    existing_ids = set(get_assigned_ids(db, course_id))
-    new_user_ids = set(body.user_ids) - existing_ids
-    db.query(CourseAssignment).filter(CourseAssignment.course_id == course_id).delete()
-    for uid in set(body.user_ids):
-        db.add(CourseAssignment(course_id=course_id, user_id=uid, assigned_by_id=current_user.id))
+
+    existing_rows = db.query(CourseAssignment).filter(CourseAssignment.course_id == course_id).all()
+    existing_by_user = {r.user_id: r for r in existing_rows}
+    existing_ids = set(existing_by_user.keys())
+    desired_ids = set(body.user_ids)
+
+    new_user_ids = desired_ids - existing_ids
+    removed_user_ids = existing_ids - desired_ids
+
+    for uid in removed_user_ids:
+        db.delete(existing_by_user[uid])
+
+    assigned_at = datetime.utcnow()
+    for uid in new_user_ids:
+        db.add(
+            CourseAssignment(
+                course_id=course_id,
+                user_id=uid,
+                assigned_at=assigned_at,
+                due_date=gs.compute_due_date(c, assigned_at),
+                assigned_by_id=current_user.id,
+            )
+        )
+
     if new_user_ids:
         notify_course_assigned(db, user_ids=list(new_user_ids), course=c)
     db.commit()
     return success_response(
         message="Course assignments updated successfully",
-        data={"course_id": course_id, "user_ids": sorted(set(body.user_ids))},
+        data={"course_id": course_id, "user_ids": sorted(desired_ids)},
     )
 
 

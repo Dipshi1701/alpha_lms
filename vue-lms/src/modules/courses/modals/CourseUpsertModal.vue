@@ -18,6 +18,12 @@ const form = reactive({
   status: 'Draft',
   description: '',
   selectedFileName: '',
+  // G012: days a learner gets from THEIR OWN assignment date -- kept as a
+  // string here since it's bound to a text/number input; parsed/validated
+  // in submit() below. 7 matches the backend's own backward-compatible
+  // default (see migration 0005) so a brand-new course starts consistent
+  // with what an omitted value would resolve to anyway.
+  assignmentDurationDays: '7',
 })
 const formErrors = reactive({
   title: '',
@@ -25,6 +31,7 @@ const formErrors = reactive({
   status: '',
   description: '',
   scormFile: '',
+  assignmentDurationDays: '',
 })
 
 watch(
@@ -36,12 +43,14 @@ watch(
     form.status = props.initialValue?.status || 'Draft'
     form.description = props.initialValue?.description || ''  
     form.selectedFileName = ''
+    form.assignmentDurationDays = String(props.initialValue?.assignmentDurationDays ?? 7)
     scormFileRef.value = null
     formErrors.title = ''
     formErrors.category = ''
     formErrors.status = ''
     formErrors.description = ''
     formErrors.scormFile = ''
+    formErrors.assignmentDurationDays = ''
   },
   { deep: true }
 )
@@ -55,6 +64,19 @@ const onScormFileChange = (event) => {
   formErrors.scormFile = ''
 }
 
+// G012 PART 14: 1 -> valid, 7 -> valid, positive integer -> valid;
+// 0/negative/decimal/non-numeric -> invalid. Mirrors the backend's own
+// `ge=1` integer validation (see app/schemas.CourseCreate/CourseUpdate) so
+// the same rule is enforced on both ends.
+const validateDuration = (raw) => {
+  const trimmed = String(raw ?? '').trim()
+  if (!trimmed) return 'Assignment duration is required'
+  if (!/^-?\d+$/.test(trimmed)) return 'Assignment duration must be a whole number of days'
+  const value = Number(trimmed)
+  if (!Number.isInteger(value) || value < 1) return 'Assignment duration must be 1 or more days'
+  return ''
+}
+
 const submit = () => {
   if (props.saving) return
   formErrors.title = form.title.trim() ? '' : 'Course title is required'
@@ -63,13 +85,15 @@ const submit = () => {
   formErrors.description = form.description.trim() ? '' : 'Description is required'
   formErrors.scormFile =
     props.mode === 'create' && !scormFileRef.value ? 'SCORM ZIP file is required' : ''
+  formErrors.assignmentDurationDays = validateDuration(form.assignmentDurationDays)
 
   if (
     formErrors.title ||
     formErrors.category ||
     formErrors.status ||
     formErrors.description ||
-    formErrors.scormFile
+    formErrors.scormFile ||
+    formErrors.assignmentDurationDays
   ) {
     return
   }
@@ -81,6 +105,7 @@ const submit = () => {
     description: form.description.trim(),
     scormZipName: form.selectedFileName,
     scormFile: scormFileRef.value,
+    assignmentDurationDays: Number(form.assignmentDurationDays),
   })
 }
 </script>
@@ -152,6 +177,29 @@ const submit = () => {
               <option value="Published">Published</option>
             </select>
             <p v-if="formErrors.status" class="mt-1 text-xs text-red-600">{{ formErrors.status }}</p>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-asi-gray mb-1.5">Assignment duration</label>
+            <div class="relative">
+              <input
+                v-model="form.assignmentDurationDays"
+                type="number"
+                min="1"
+                step="1"
+                :disabled="saving"
+                data-testid="course-assignment-duration-input"
+                required
+                placeholder="7"
+                class="w-full px-3 py-2 pr-14 text-sm border border-asi-border rounded-lg focus:outline-none focus:ring-2 focus:ring-asi-purple/20 focus:border-asi-lavender text-asi-black"
+              />
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-asi-gray">days</span>
+            </div>
+            <p class="mt-1 text-xs text-asi-gray">
+              Learners will have {{ form.assignmentDurationDays || 'N' }} days from the date they are assigned the course.
+            </p>
+            <p v-if="formErrors.assignmentDurationDays" class="mt-1 text-xs text-red-600">
+              {{ formErrors.assignmentDurationDays }}
+            </p>
           </div>
         </div>
 

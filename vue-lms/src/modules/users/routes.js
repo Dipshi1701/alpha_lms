@@ -7,6 +7,7 @@
 
 import Users from './views/Users.vue'
 import Groups from './views/Groups.vue'
+import GroupDetail from './views/GroupDetail.vue'
 import { ROLES } from '../../composables/useAccess'
 
 export const userRoutes = [
@@ -19,6 +20,12 @@ export const userRoutes = [
     path: 'groups',
     component: Groups,
     meta: { roles: [ROLES.ADMIN, ROLES.INSTRUCTOR] }  // Admin + Instructor
+  },
+  {
+    path: 'groups/:groupId',
+    name: 'group-detail',
+    component: GroupDetail,
+    meta: { roles: [ROLES.ADMIN, ROLES.INSTRUCTOR] }  // Admin + scoped Instructor (backend enforces scope)
   },
 ]
 

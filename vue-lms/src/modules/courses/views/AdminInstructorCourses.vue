@@ -22,10 +22,17 @@ import {
   assignCourseUsers,
   uploadScormZip,
 } from '../service'
+// Group course assignment (G011) reuses the exact Groups API/service built
+// in G010 — no second assignment architecture. Assigning a course to a
+// group is Administrator-only on the backend (see G006/G009), so this is
+// only ever loaded/offered when isAdmin is true.
+import { fetchGroups, assignGroupCourse } from '../../users/service'
+import { useAccess } from '../../../composables/useAccess'
 
 const CATEGORIES = ['All', 'General', 'Sales', 'Management', 'Compliance', 'Technical']
 
 const router = useRouter()
+const { isAdmin } = useAccess()
 
 const courses = ref([])
 const assignableUsers = ref([])
@@ -51,12 +58,17 @@ const editingCourseId = ref(null)
 const isSubmittingCourse = ref(false)
 const showAssignModal = ref(false)
 const assigningCourse = ref(null)
+const isSubmittingAssignment = ref(false)
+const groupsForAssignment = ref([])
+const groupsForAssignmentLoading = ref(false)
+const groupsForAssignmentError = ref('')
 
 const addCourseForm = reactive({
   title: '',
   category: 'General',
   description: '',
   status: 'Draft',
+  assignmentDurationDays: 7,
 })
 
 const assignForm = reactive({
@@ -76,6 +88,7 @@ const resetAddCourseForm = () => {
   addCourseForm.category = 'General'
   addCourseForm.description = ''
   addCourseForm.status = 'Draft'
+  addCourseForm.assignmentDurationDays = 7
   editingCourseId.value = null
   isEditMode.value = false
 }
@@ -94,6 +107,7 @@ const openEditCourseModal = (course) => {
   addCourseForm.category = course.category || 'General'
   addCourseForm.description = course.description || ''
   addCourseForm.status = course.status || 'Draft'
+  addCourseForm.assignmentDurationDays = course.assignmentDurationDays ?? 7
   showAddCourseModal.value = true
 }
 
@@ -115,14 +129,31 @@ const notify = (message, tone = 'success') => {
   }, 3200)
 }
 
+const loadGroupsForAssignment = async () => {
+  if (!isAdmin.value) return
+  groupsForAssignmentLoading.value = true
+  groupsForAssignmentError.value = ''
+  try {
+    // Backend is the source of truth for scope — render exactly what
+    // GET /api/groups returns, no client-side filtering.
+    groupsForAssignment.value = await fetchGroups()
+  } catch (e) {
+    groupsForAssignmentError.value = e?.message || 'Failed to load groups'
+  } finally {
+    groupsForAssignmentLoading.value = false
+  }
+}
+
 const openAssignModal = (course) => {
   if (!canAssignCourse(course)) return
   assigningCourse.value = course
   assignForm.assignedUserIds = [...(course.assignedUserIds || [])]
   showAssignModal.value = true
+  if (isAdmin.value) loadGroupsForAssignment()
 }
 
 const closeAssignModal = () => {
+  if (isSubmittingAssignment.value) return
   showAssignModal.value = false
   assigningCourse.value = null
 }
@@ -150,8 +181,13 @@ onBeforeUnmount(() => {
 })
 
 const saveAssignment = async () => {
-  if (!assigningCourse.value) return
+  if (!assigningCourse.value || isSubmittingAssignment.value) return
+  isSubmittingAssignment.value = true
   try {
+    // Replaces the full assignment list for this course — assignForm
+    // already starts from the course's current (source-agnostic)
+    // assigned_user_ids, so learners assigned via a Group are preserved
+    // unless explicitly un-toggled here.
     await assignCourseUsers(assigningCourse.value.id, assignForm.assignedUserIds)
     const names = assignableUsers.value
       .filter((u) => assignForm.assignedUserIds.includes(u.id))
@@ -166,6 +202,30 @@ const saveAssignment = async () => {
     await loadData()
   } catch (e) {
     notify(e?.message || 'Assignment failed', 'error')
+  } finally {
+    isSubmittingAssignment.value = false
+  }
+}
+
+const saveGroupAssignment = async (groupId) => {
+  if (!assigningCourse.value || isSubmittingAssignment.value) return
+  isSubmittingAssignment.value = true
+  try {
+    // Existing GroupCourseAssignment + G007 learner-sync flow — no second
+    // assignment system. The backend's own duplicate-assignment rule
+    // (course already assigned to this group) surfaces here unchanged.
+    await assignGroupCourse(groupId, assigningCourse.value.id)
+    const group = groupsForAssignment.value.find((g) => g.id === groupId)
+    notify(
+      `Assigned "${assigningCourse.value.title}" to group "${group?.name || groupId}"`,
+      'success'
+    )
+    closeAssignModal()
+    await loadData()
+  } catch (e) {
+    notify(e?.message || 'Group assignment failed', 'error')
+  } finally {
+    isSubmittingAssignment.value = false
   }
 }
 
@@ -174,6 +234,11 @@ const submitCourse = async (payload) => {
   isSubmittingCourse.value = true
   const isCreate = !isEditMode.value
   const scormFile = payload?.scormFile
+  // G012: falls back to the same backward-compatible default (7) as the
+  // backend if the modal somehow didn't provide one — the modal's own
+  // validation already blocks submitting anything invalid before this
+  // handler ever runs.
+  const assignmentDurationDays = Number(payload?.assignmentDurationDays) || 7
   const base = {
     title: payload?.title?.trim() || 'Untitled course',
     category: payload?.category || 'General',
@@ -181,20 +246,14 @@ const submitCourse = async (payload) => {
     status: payload?.status || 'Draft',
     code: '-',
     price: '-',
+    assignment_duration_days: assignmentDurationDays,
   }
 
   try {
     let courseId
     if (isEditMode.value && editingCourseId.value != null) {
       courseId = editingCourseId.value
-      await updateCourse(courseId, {
-        title: base.title,
-        category: base.category,
-        description: base.description,
-        status: base.status,
-        code: base.code,
-        price: base.price,
-      })
+      await updateCourse(courseId, { ...base })
       notify(`Updated "${base.title}"`, 'success')
     } else {
       const created = await createCourse({
@@ -235,14 +294,18 @@ const handleUpsertSave = async (payloadFromChild) => {
   await submitCourse(payloadFromChild)
 }
 
-const handleAssignSave = ({ assignedUserIds }) => {
-  assignForm.assignedUserIds = [...(assignedUserIds || [])]
+const handleAssignSave = (payload) => {
+  if (payload?.mode === 'group') {
+    saveGroupAssignment(payload.groupId)
+    return
+  }
+  assignForm.assignedUserIds = [...(payload?.assignedUserIds || [])]
   saveAssignment()
 }
 </script>
 
 <template>
-  <div class="p-6 max-w-[1400px] mx-auto">
+  <div class="min-h-screen bg-[#F7F5FA] p-6">
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-xl font-bold text-asi-black">Courses</h1>
@@ -255,7 +318,7 @@ const handleAssignSave = ({ assignedUserIds }) => {
           type="button"
           :disabled="loading"
           @click="openAddCourseModal"
-          class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-asi-purple rounded-lg hover:bg-[#5a3a8a] transition-all shadow-sm disabled:opacity-50"
+          class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-[#462C6B] to-[#462C6B] hover:from-[#462C6B] hover:to-[#CA1F47] rounded-lg transition-all shadow-sm hover:shadow-md hover:shadow-[#462C6B]/30 disabled:opacity-50"
         >
           <BookPlus :size="15" />
           Add course
@@ -265,7 +328,7 @@ const handleAssignSave = ({ assignedUserIds }) => {
 
     <div
       v-if="loadError"
-      class="mb-5 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm"
+      class="mb-5 rounded-xl border border-[#FAEAEE] bg-[#FAEAEE] text-[#CA1F47] px-4 py-3 text-sm"
     >
       {{ loadError }}
     </div>
@@ -273,131 +336,158 @@ const handleAssignSave = ({ assignedUserIds }) => {
     <div class="flex flex-wrap items-center gap-3 mb-5">
       <div class="relative flex-1 min-w-[200px] max-w-sm">
         <Search
-          :size="15"
-          class="absolute left-3 top-1/2 -translate-y-1/2 text-asi-gray"
+          :size="14"
+          class="absolute left-3 top-1/2 -translate-y-1/2 text-[#7D6B9D]"
         />
         <input
           v-model="search"
           placeholder="Search courses..."
-          class="w-full pl-9 pr-4 h-10 text-sm bg-white border border-asi-border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#462C6B]/20 focus:border-[#462C6B] text-asi-black shadow-sm"
+          class="w-full pl-9 pr-4 h-10 text-sm bg-white border border-[#E8E2F0] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#462C6B]/20 focus:border-[#462C6B] text-[#231F20] shadow-sm placeholder:text-[#7D6B9D]/60"
         />
       </div>
 
       <div class="relative">
         <select
           v-model="category"
-          class="appearance-none h-10 pl-4 pr-9 text-sm bg-white border border-asi-border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#462C6B]/20 focus:border-[#462C6B] text-asi-black cursor-pointer shadow-sm"
+          class="appearance-none h-10 pl-4 pr-9 text-sm bg-white border border-[#E8E2F0] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#462C6B]/20 focus:border-[#462C6B] text-[#231F20] cursor-pointer shadow-sm"
         >
           <option v-for="cat in CATEGORIES" :key="cat" :value="cat">{{ cat }}</option>
         </select>
-        <ChevronDown :size="14" class="absolute right-3 top-1/2 -translate-y-1/2 text-asi-gray pointer-events-none" />
+        <ChevronDown :size="14" class="absolute right-3 top-1/2 -translate-y-1/2 text-[#7D6B9D] pointer-events-none" />
       </div>
     </div>
 
-    <div class="bg-white rounded-2xl border border-asi-border shadow-sm overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-asi-surface border-b border-asi-border">
-            <tr>
-              <th class="text-left px-4 py-3 font-semibold text-asi-black">Course</th>
-              <th class="text-left px-4 py-3 font-semibold text-asi-black">Code</th>
-              <th class="text-left px-4 py-3 font-semibold text-asi-black">Category</th>
-              <th class="text-left px-4 py-3 font-semibold text-asi-black">Price</th>
-              <th class="text-left px-4 py-3 font-semibold text-asi-black">Last updated on</th>
-              <th class="text-right px-4 py-3 font-semibold text-asi-black">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="course in filtered"
-              :key="course.id"
-              class="border-b border-asi-border hover:bg-asi-surface"
-            >
-              <td class="px-4 py-3">
-                <div class="flex items-center gap-3">
-                  <div
-                    :class="clsx('w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold', course.color || 'bg-asi-purple')"
-                  >
-                    {{ course.title?.[0] || 'C' }}
-                  </div>
-                  <div class="min-w-0">
-                    <p class="font-semibold text-asi-black truncate">{{ course.title }}</p>
-                    <div class="flex items-center gap-2 mt-0.5">
-                      <span
-                        :class="clsx(
-                          'text-xs font-semibold px-2 py-0.5 rounded-full',
-                          course.status === 'Published'
-                            ? 'bg-asi-purple-light text-asi-purple'
-                            : 'bg-asi-surface text-asi-gray'
-                        )"
-                      >
-                        {{ course.status || 'Inactive' }}
-                      </span>
-                      <span
-                        v-if="course.contentType === 'scorm12'"
-                        class="text-xs font-medium px-2 py-0.5 rounded-full bg-asi-purple-light text-asi-lavender border border-asi-border"
-                      >
-                        SCORM 1.2
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </td>
-              <td class="px-4 py-3 text-asi-gray">{{ course.code || '-' }}</td>
-              <td class="px-4 py-3 text-asi-gray">{{ course.category || '-' }}</td>
-              <td class="px-4 py-3 text-asi-gray">{{ course.price || '-' }}</td>
-              <td class="px-4 py-3 text-asi-gray">{{ course.updatedAt || '-' }}</td>
-              <td class="px-4 py-3">
-                <div class="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    class="p-2 rounded-lg hover:bg-asi-surface text-asi-gray"
-                    title="Preview as learner"
-                    @click="openLearnerPreview(course)"
-                  >
-                    <Eye :size="16" />
-                  </button>
-                  <button
-                    type="button"
-                    :disabled="!canAssignCourse(course)"
-                    :class="clsx(
-                      'p-2 rounded-lg transition-colors',
-                      canAssignCourse(course)
-                        ? 'hover:bg-asi-purple-light text-asi-purple'
-                        : 'bg-asi-surface text-asi-gray cursor-not-allowed'
-                    )"
-                    :title="canAssignCourse(course) ? 'Assign learners' : 'Make the course status from draft to published to enable assignment'"
-                    @click="openAssignModal(course)"
-                  >
-                    <UsersIcon :size="16" />
-                  </button>
-                  <button
-                    type="button"
-                    class="p-2 rounded-lg hover:bg-asi-surface text-asi-gray"
-                    title="Edit"
-                    @click="openEditCourseModal(course)"
-                  >
-                    <Pencil :size="16" />
-                  </button>
-                  <button
-                    type="button"
-                    class="p-2 rounded-lg hover:bg-red-50 text-red-700"
-                    title="Delete"
-                    @click="removeCourse(course)"
-                  >
-                    <Trash2 :size="16" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!loading && filtered.length === 0">
-              <td colspan="6" class="px-4 py-10 text-center text-sm text-asi-gray">
-                No courses found.
-              </td>
-            </tr>
-          </tbody>
-        </table>
+    <!-- Loading skeletons -->
+    <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+      <div v-for="i in 8" :key="i" class="rounded-2xl overflow-hidden bg-white shadow-sm border border-[#E8E2F0]">
+        <div class="h-40 bg-gradient-to-br from-[#E8E2F0] to-[#F0EDF6] animate-pulse" />
+        <div class="p-4 space-y-3">
+          <div class="h-3.5 rounded-full bg-[#F0EDF6] animate-pulse w-3/4" />
+          <div class="h-3 rounded-full bg-[#F0EDF6] animate-pulse w-1/2" />
+          <div class="h-8 rounded-xl bg-[#F0EDF6] animate-pulse mt-3" />
+        </div>
       </div>
+    </div>
+
+    <!-- Course cards -->
+    <div v-else-if="filtered.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+      <div
+        v-for="(course, idx) in filtered"
+        :key="course.id"
+        class="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:shadow-[#462C6B]/15 border border-[#E8E2F0] hover:border-[#7D6B9D]/30 transition-all duration-300 hover:-translate-y-1 flex flex-col"
+      >
+        <!-- Thumbnail -->
+        <div class="relative h-40 overflow-hidden bg-gradient-to-br from-[#462C6B] to-[#CA1F47]">
+          <div class="absolute inset-0 flex items-center justify-center">
+            <div class="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white text-4xl font-bold">
+              {{ course.title?.[0] || 'C' }}
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 right-3 flex items-center justify-between">
+            <span
+              v-if="course.contentType === 'scorm12'"
+              class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-black/40 text-white/90 backdrop-blur-sm uppercase tracking-wide"
+            >
+              SCORM 1.2
+            </span>
+            <span
+              :class="clsx(
+                'text-[10px] font-bold px-2.5 py-1 rounded-full backdrop-blur-sm',
+                course.status === 'Published'
+                  ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30'
+                  : 'bg-white/10 text-white/60 border border-white/20'
+              )"
+            >
+              {{ course.status || 'Draft' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Card body -->
+        <div class="p-4 flex flex-col flex-1">
+          <h3 class="font-bold text-[#231F20] text-sm leading-snug line-clamp-2 mb-2 group-hover:text-[#462C6B] transition-colors">
+            {{ course.title }}
+          </h3>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#F0EDF6] text-[#462C6B]">
+              {{ course.category || 'General' }}
+            </span>
+          </div>
+
+          <div class="text-xs text-[#67686B] mb-4 space-y-1">
+            <div v-if="course.code && course.code !== '-'">Code: {{ course.code }}</div>
+            <div v-if="course.updatedAt">Updated: {{ course.updatedAt }}</div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="mt-auto grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-[#462C6B] to-[#462C6B] hover:from-[#462C6B] hover:to-[#CA1F47] hover:shadow-md hover:shadow-[#462C6B]/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+              @click="openEditCourseModal(course)"
+              title="Edit course"
+            >
+              <Pencil :size="11" />
+              Edit
+            </button>
+            <button
+              type="button"
+              :disabled="!canAssignCourse(course)"
+              :class="clsx(
+                'flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all duration-300',
+                canAssignCourse(course)
+                  ? 'text-[#462C6B] bg-[#F0EDF6] hover:bg-[#462C6B] hover:text-white hover:shadow-md hover:shadow-[#462C6B]/20 hover:scale-[1.02] active:scale-[0.98]'
+                  : 'text-[#7D6B9D]/40 bg-[#F0EDF6]/50 cursor-not-allowed'
+              )"
+              @click="canAssignCourse(course) && openAssignModal(course)"
+              :title="canAssignCourse(course) ? 'Assign learners' : 'Publish course to enable assignment'"
+            >
+              <UsersIcon :size="11" />
+              Assign
+            </button>
+          </div>
+          
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold text-[#462C6B] bg-[#F0EDF6] hover:bg-[#462C6B] hover:text-white hover:shadow-md hover:shadow-[#462C6B]/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+              @click="openLearnerPreview(course)"
+              title="Preview as learner"
+            >
+              <Eye :size="11" />
+              Preview
+            </button>
+            <button
+              type="button"
+              class="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-600 hover:text-white hover:shadow-md hover:shadow-red-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+              @click="removeCourse(course)"
+              title="Delete course"
+            >
+              <Trash2 :size="11" />
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div v-else-if="!loading" class="flex flex-col items-center justify-center py-24 bg-white rounded-2xl border border-dashed border-[#E8E2F0]">
+      <div class="w-16 h-16 rounded-2xl bg-[#F0EDF6] flex items-center justify-center mb-4">
+        <BookPlus :size="24" class="text-[#7D6B9D]" />
+      </div>
+      <h3 class="text-base font-bold text-[#231F20] mb-1">No courses found</h3>
+      <p class="text-sm text-[#67686B] text-center max-w-xs">
+        {{ search || category !== 'All' ? 'No courses match your search criteria.' : 'Get started by adding your first course.' }}
+      </p>
+      <button
+        v-if="search || category !== 'All'"
+        type="button"
+        class="mt-4 text-xs font-bold text-[#462C6B] hover:text-[#CA1F47] transition-colors"
+        @click="search = ''; category = 'All'"
+      >
+        Clear filters
+      </button>
     </div>
 
     <CourseUpsertModal
@@ -415,6 +505,12 @@ const handleAssignSave = ({ assignedUserIds }) => {
       :course-title="assigningCourse?.title || ''"
       :users="assignableUsers"
       :initial-assigned-user-ids="assigningCourse?.assignedUserIds || []"
+      :learner-assignments="assigningCourse?.learnerAssignments || []"
+      :can-assign-to-group="isAdmin"
+      :groups="groupsForAssignment"
+      :groups-loading="groupsForAssignmentLoading"
+      :groups-load-error="groupsForAssignmentError"
+      :saving="isSubmittingAssignment"
       @close="closeAssignModal"
       @save="handleAssignSave"
     />

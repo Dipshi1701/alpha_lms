@@ -83,6 +83,17 @@ function getCourseProgress(courseId) {
   return progressMap.value[String(courseId)] || { lesson_status: 'not attempted', progress_percent: 0 }
 }
 
+// G012 PART 15: backend scopes learnerAssignments to just this learner's
+// own row (never another learner's), so there is at most one entry here.
+function getMyAssignment(course) {
+  return course?.learnerAssignments?.[0] || null
+}
+
+function formatAssignmentDate(value) {
+  if (!value) return '—'
+  return new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 function statusLabel(status) {
   if (status === 'completed' || status === 'passed') return 'Completed'
   if (status === 'incomplete') return 'In Progress'
@@ -369,6 +380,18 @@ const filteredCourses = computed(() => {
                   <span v-if="selectedCourse.scorm_maxtimeallowed" class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1 rounded-full bg-[#F0EDF6] text-[#462C6B]">
                     <Clock :size="11" />
                     {{ selectedCourse.scorm_maxtimeallowed }}
+                  </span>
+                </div>
+
+                <!-- Assigned / Due (G012 PART 15) -->
+                <div v-if="getMyAssignment(selectedCourse)" class="flex flex-wrap items-center gap-2 mb-5">
+                  <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1 rounded-full bg-[#F0EDF6] text-[#462C6B]">
+                    <Clock :size="11" />
+                    Assigned {{ formatAssignmentDate(getMyAssignment(selectedCourse).assignedAt) }}
+                  </span>
+                  <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1 rounded-full bg-[#F0EDF6] text-[#462C6B]">
+                    <Clock :size="11" />
+                    Due {{ formatAssignmentDate(getMyAssignment(selectedCourse).dueDate) }}
                   </span>
                 </div>
 
